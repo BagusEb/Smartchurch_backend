@@ -1,0 +1,14 @@
+# Python / Django
+__pycache__/
+*.py[cod]
+venv/
+.env
+db.sqlite3
+
+# React / Node
+node_modules/
+dist/
+.eslintcache
+
+# Database Dump
+*.sql
