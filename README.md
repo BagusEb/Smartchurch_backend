@@ -52,3 +52,6 @@ Panduan ini ditujukan bagi *developer* yang ingin menjalankan sistem SmartChurch
    ```bash
    python -m venv venv
    source venv/Scripts/activate  # Untuk Windows
+3. Setelah masuk ke dalam venv lalu tinggal jalankan 
+   pip install -r requirements.txt
+untuk menginstall smua libraries di dalam venv
