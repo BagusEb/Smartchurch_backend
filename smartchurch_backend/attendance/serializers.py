@@ -46,7 +46,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-
         # Suntikkan Role ke dalam payload JWT
         try:
             token['role'] = user.profile.role

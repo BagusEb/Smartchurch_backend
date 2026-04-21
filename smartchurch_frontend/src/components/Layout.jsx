@@ -120,9 +120,9 @@ export default function Layout({ role }) {
         }
       `}</style>
 
-      <div className="layout-root flex h-screen overflow-hidden bg-slate-100">
+      <div className="flex bg-slate-100 h-screen overflow-hidden layout-root">
 
-        <aside className="sidebar-bg w-64 flex flex-col flex-shrink-0 relative">
+        <aside className="relative flex flex-col w-64 shrink-0 sidebar-bg">
           <div
             aria-hidden
             style={{
@@ -133,20 +133,20 @@ export default function Layout({ role }) {
             }}
           />
 
-          <div className="flex items-center gap-3 px-6 py-6 border-b border-white/10">
-            <div className="logo-glow w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center flex-shrink-0">
+          <div className="flex items-center gap-3 px-6 py-6 border-white/10 border-b">
+            <div className="flex justify-center items-center bg-linear-to-br from-indigo-400 to-violet-500 rounded-xl w-10 h-10 shrink-0 logo-glow">
               <Church size={20} className="text-white" />
             </div>
             <div className="leading-tight">
-              <p className="text-white font-extrabold text-lg tracking-tight">
+              <p className="font-extrabold text-white text-lg tracking-tight">
                 Smart<span className="text-indigo-300">Church</span>
               </p>
-              <p className="text-indigo-300/70 text-xs font-medium">Management System</p>
+              <p className="font-medium text-indigo-300/70 text-xs">Management System</p>
             </div>
           </div>
 
-          <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
-            <p className="text-indigo-300/50 text-xs font-bold uppercase tracking-widest px-3 mb-3">
+          <nav className="flex-1 space-y-1 px-3 py-5 overflow-y-auto">
+            <p className="mb-3 px-3 font-bold text-indigo-300/50 text-xs uppercase tracking-widest">
               Menu Utama
             </p>
 
@@ -165,7 +165,7 @@ export default function Layout({ role }) {
                   }`}
                   style={{ borderLeftWidth: isActive ? 3 : 0 }}
                 >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${
                     isActive
                       ? 'bg-white/20'
                       : 'bg-white/5'
@@ -181,19 +181,19 @@ export default function Layout({ role }) {
             })}
           </nav>
 
-          <div className="px-4 py-4 border-t border-white/10 space-y-2">
-            <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-white/5 cursor-pointer transition-all">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+          <div className="space-y-2 px-4 py-4 border-white/10 border-t">
+            <div className="flex items-center gap-3 hover:bg-white/5 px-2 py-2 rounded-xl transition-all cursor-pointer">
+              <div className="flex justify-center items-center bg-linear-to-br from-indigo-400 to-violet-500 rounded-xl w-8 h-8 font-bold text-white text-xs shrink-0">
                 {profileData.initial}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white text-xs font-semibold truncate">{profileData.name}</p>
+                <p className="font-semibold text-white text-xs truncate">{profileData.name}</p>
                 <p className="text-indigo-300/60 text-xs truncate">{profileData.subText}</p>
               </div>
               
               {/* --- UPDATE: Tombol Logout berfungsi --- */}
-              <button onClick={handleLogout} title="Logout" className="p-1 hover:bg-white/10 rounded">
-                <LogOut size={14} className="text-indigo-300 hover:text-red-400 transition-colors flex-shrink-0" />
+              <button onClick={handleLogout} title="Logout" className="hover:bg-white/10 p-1 rounded">
+                <LogOut size={14} className="text-indigo-300 hover:text-red-400 transition-colors shrink-0" />
               </button>
             </div>
 
@@ -203,43 +203,43 @@ export default function Layout({ role }) {
           </div>
         </aside>
 
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-          <header className="header-shadow h-16 bg-white flex items-center justify-between px-8 flex-shrink-0 z-10">
-            <div className="breadcrumb flex items-center gap-2 text-sm">
-              <span className="text-slate-400 font-medium">SmartChurch</span>
+        <main className="flex flex-col flex-1 min-w-0 overflow-hidden">
+          <header className="z-10 flex justify-between items-center bg-white header-shadow px-8 h-16 shrink-0">
+            <div className="flex items-center gap-2 text-sm breadcrumb">
+              <span className="font-medium text-slate-400">SmartChurch</span>
               <ChevronRight size={14} className="text-slate-300" />
-              <span className="text-slate-700 font-semibold">{pageTitle}</span>
+              <span className="font-semibold text-slate-700">{pageTitle}</span>
             </div>
 
             <div className="flex items-center gap-2">
-              <button className="relative w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 transition-all">
+              <button className="relative flex justify-center items-center bg-slate-100 hover:bg-slate-200 rounded-xl w-9 h-9 text-slate-500 transition-all">
                 <Bell size={16} />
-                <span className="notif-pulse absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 border-2 border-white" />
+                <span className="top-1.5 right-1.5 absolute bg-red-500 border-2 border-white rounded-full w-2 h-2 notif-pulse" />
               </button>
 
-              <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 transition-all">
+              <button className="flex justify-center items-center bg-slate-100 hover:bg-slate-200 rounded-xl w-9 h-9 text-slate-500 transition-all">
                 <Settings size={16} />
               </button>
 
-              <div className="w-px h-6 bg-slate-200 mx-1" />
+              <div className="bg-slate-200 mx-1 w-px h-6" />
 
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                <div className="flex justify-center items-center bg-linear-to-br from-indigo-500 to-violet-600 shadow-sm rounded-xl w-8 h-8 font-bold text-white text-xs">
                   {profileData.initial}
                 </div>
                 <div className="hidden sm:block leading-tight">
-                  <p className="text-slate-700 text-sm font-semibold leading-none">{profileData.name}</p>
-                  <p className="text-slate-400 text-xs mt-0.5">{profileData.subText}</p>
+                  <p className="font-semibold text-slate-700 text-sm leading-none">{profileData.name}</p>
+                  <p className="mt-0.5 text-slate-400 text-xs">{profileData.subText}</p>
                 </div>
               </div>
             </div>
           </header>
 
-          <div className="content-area flex-1 overflow-auto p-8">
+          <div className="flex-1 p-8 overflow-auto content-area">
             <Outlet />
 
             {/* --- WIDGET AI HANYA MUNCUL JIKA ROLE == 'leader' --- */}
-            {role === 'leader' && <AIAssistantWidget />}
+            <AIAssistantWidget />
 
           </div>
         </main>

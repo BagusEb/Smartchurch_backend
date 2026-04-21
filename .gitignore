@@ -12,3 +12,5 @@ dist/
 
 # Database Dump
 *.sql
+.venv
+.vscode

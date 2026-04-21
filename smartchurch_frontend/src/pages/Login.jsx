@@ -133,16 +133,16 @@ export default function Login({ onLogin }) {
 
       {/* ── Full-screen background ── */}
       <div
-        className="login-root min-h-screen flex items-center justify-center relative overflow-hidden"
+        className="relative flex justify-center items-center min-h-screen overflow-hidden login-root"
         style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #1e1b4b 40%, #24243e 100%)' }}
       >
 
         {/* Decorative blurred orbs for depth */}
-        <div className="orb absolute top-[-80px] left-[-80px] w-80 h-80 rounded-full opacity-30"
+        <div className="-top-20 -left-20 absolute opacity-30 rounded-full w-80 h-80 orb"
           style={{ background: 'radial-gradient(circle, #818cf8 0%, transparent 70%)' }} />
-        <div className="orb-2 absolute bottom-[-60px] right-[-60px] w-96 h-96 rounded-full opacity-25"
+        <div className="-right-15 -bottom-15 absolute opacity-25 rounded-full w-96 h-96 orb-2"
           style={{ background: 'radial-gradient(circle, #a78bfa 0%, transparent 70%)' }} />
-        <div className="orb-3 absolute top-[40%] right-[20%] w-48 h-48 rounded-full opacity-20"
+        <div className="top-[40%] right-[20%] absolute opacity-20 rounded-full w-48 h-48 orb-3"
           style={{ background: 'radial-gradient(circle, #60a5fa 0%, transparent 70%)' }} />
 
         {/* Subtle dot-grid texture overlay */}
@@ -156,11 +156,11 @@ export default function Login({ onLogin }) {
         />
 
         {/* ── Login card ── */}
-        <div className="login-card relative z-10 w-full max-w-md mx-4">
+        <div className="z-10 relative mx-4 w-full max-w-md login-card">
 
           {/* Glass card */}
           <div
-            className="rounded-3xl p-10"
+            className="p-10 rounded-3xl"
             style={{
               background: 'rgba(255,255,255,0.05)',
               backdropFilter: 'blur(24px)',
@@ -174,7 +174,7 @@ export default function Login({ onLogin }) {
             <div className="flex flex-col items-center mb-8">
               {/* Church icon with glow ring */}
               <div
-                className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+                className="flex justify-center items-center mb-4 rounded-2xl w-16 h-16"
                 style={{
                   background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
                   boxShadow: '0 0 0 8px rgba(99,102,241,0.15), 0 8px 24px rgba(99,102,241,0.4)',
@@ -183,20 +183,20 @@ export default function Login({ onLogin }) {
                 <Church size={28} className="text-white" />
               </div>
 
-              <h1 className="text-4xl font-extrabold text-white tracking-tight">
+              <h1 className="font-extrabold text-white text-4xl tracking-tight">
                 Smart<span className="text-indigo-300">Church</span>
               </h1>
-              <p className="text-indigo-300/70 text-sm mt-1.5 text-center">
+              <p className="mt-1.5 text-indigo-300/70 text-sm text-center">
                 Sistem Manajemen &amp; Akuisisi Data Terpadu
               </p>
             </div>
 
             {/* ── Feature badges ── */}
-            <div className="flex justify-center gap-2 mb-8 flex-wrap">
+            <div className="flex flex-wrap justify-center gap-2 mb-8">
               {['Realtime Data', 'AI Powered'].map(label => (
                 <span
                   key={label}
-                  className="badge inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold text-xs badge"
                   style={{
                     background: 'rgba(99,102,241,0.18)',
                     color: '#a5b4fc',
@@ -215,14 +215,14 @@ export default function Login({ onLogin }) {
               {/* Error alert — shown when login fails */}
               {errorMsg && (
                 <div
-                  className="error-shake flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium"
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm error-shake"
                   style={{
                     background: 'rgba(239,68,68,0.15)',
                     border: '1px solid rgba(239,68,68,0.35)',
                     color: '#fca5a5',
                   }}
                 >
-                  <AlertCircle size={16} className="flex-shrink-0" />
+                  <AlertCircle size={16} className="shrink-0" />
                   {errorMsg}
                 </div>
               )}
@@ -230,14 +230,14 @@ export default function Login({ onLogin }) {
               {/* Username field */}
               <div>
                 <label
-                  className="block text-xs font-semibold uppercase tracking-widest mb-2"
+                  className="block mb-2 font-semibold text-xs uppercase tracking-widest"
                   style={{ color: 'rgba(165,180,252,0.7)' }}
                 >
                   Username
                 </label>
                 <div className="relative">
                   {/* Left icon */}
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <div className="left-0 absolute inset-y-0 flex items-center pl-4 pointer-events-none">
                     <User size={16} style={{ color: '#818cf8' }} />
                   </div>
                   <input
@@ -246,7 +246,7 @@ export default function Login({ onLogin }) {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Masukkan username..."
-                    className="login-input w-full pl-11 pr-4 py-3 rounded-xl text-white text-sm transition-all"
+                    className="py-3 pr-4 pl-11 rounded-xl w-full text-white text-sm transition-all login-input"
                     style={{
                       background: 'rgba(255,255,255,0.05)',
                       border: '1px solid rgba(165,180,252,0.25)',
@@ -258,14 +258,14 @@ export default function Login({ onLogin }) {
               {/* Password field */}
               <div>
                 <label
-                  className="block text-xs font-semibold uppercase tracking-widest mb-2"
+                  className="block mb-2 font-semibold text-xs uppercase tracking-widest"
                   style={{ color: 'rgba(165,180,252,0.7)' }}
                 >
                   Password
                 </label>
                 <div className="relative">
                   {/* Left icon */}
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <div className="left-0 absolute inset-y-0 flex items-center pl-4 pointer-events-none">
                     <Lock size={16} style={{ color: '#818cf8' }} />
                   </div>
                   <input
@@ -274,7 +274,7 @@ export default function Login({ onLogin }) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="login-input w-full pl-11 pr-4 py-3 rounded-xl text-white text-sm transition-all"
+                    className="py-3 pr-4 pl-11 rounded-xl w-full text-white text-sm transition-all login-input"
                     style={{
                       background: 'rgba(255,255,255,0.05)',
                       border: '1px solid rgba(165,180,252,0.25)',
@@ -287,7 +287,7 @@ export default function Login({ onLogin }) {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="btn-login w-full flex items-center justify-center gap-2.5 text-white font-bold py-3.5 px-4 rounded-xl mt-2"
+                className="flex justify-center items-center gap-2.5 mt-2 px-4 py-3.5 rounded-xl w-full font-bold text-white btn-login"
               >
                 {isLoading ? (
                   <>
@@ -306,7 +306,7 @@ export default function Login({ onLogin }) {
 
             {/* ── Footer ── */}
             <div
-              className="mt-8 pt-6 text-center text-xs"
+              className="mt-8 pt-6 text-xs text-center"
               style={{
                 borderTop: '1px solid rgba(255,255,255,0.08)',
                 color: 'rgba(165,180,252,0.4)',

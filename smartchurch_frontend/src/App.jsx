@@ -9,6 +9,7 @@ import ManageUsers from './pages/ManageUsers';
 import Attendance from './pages/Attendance';
 import GuestValidation from './pages/GuestValidation';
 import AttendanceReport from './pages/AttendanceReport';
+import AIChat from './pages/AIChat';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -32,13 +33,19 @@ function App() {
     setIsAuthenticated(true);
     setUserRole(decoded.role);
   };
-
+  console.log('User Role:', userRole); // Debugging: Cek nilai userRole
   return (
     <Router>
       <Routes>
         <Route 
           path="/login" 
-          element={isAuthenticated ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />} 
+          element={(()=>{
+            if (!isAuthenticated) {
+              return <Login onLogin={handleLogin} />;
+            }
+            
+            return <Navigate to="/" replace />;
+          })()}
         />
 
         <Route 
@@ -68,6 +75,10 @@ function App() {
           <Route 
             path="report" 
             element={<AttendanceReport />} 
+          />
+          <Route
+            path="chat"
+            element={userRole === 'leader' ? <AIChat /> : <Navigate to="/" replace />}
           />
         </Route>
       </Routes>
