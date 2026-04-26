@@ -12,4 +12,5 @@ dist/
 
 # Database Dump
 .venv
+.env
 .vscode
