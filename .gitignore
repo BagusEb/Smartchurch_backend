@@ -11,6 +11,5 @@ dist/
 .eslintcache
 
 # Database Dump
-*.sql
 .venv
 .vscode
