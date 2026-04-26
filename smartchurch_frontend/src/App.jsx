@@ -43,14 +43,24 @@ function App() {
             if (!isAuthenticated) {
               return <Login onLogin={handleLogin} />;
             }
-            
-            return <Navigate to="/" replace />;
+            if (userRole === 'leader') {
+              return <Navigate to="/chat" replace />;
+            }
+            return <Navigate to={'/'} replace />;
           })()}
         />
 
         <Route 
           path="/" 
-          element={isAuthenticated ? <Layout role={userRole} /> : <Navigate to="/login" replace />}
+          element={(()=>{
+            if (!isAuthenticated){
+              return <Navigate to="/login" replace />;
+            }
+            if (userRole === 'leader'){
+              return <Navigate to="/chat" replace />;
+            }
+            return <Layout role={userRole} />;
+          })()}
         >
           {/* Semua Role bisa melihat Dashboard */}
           <Route index element={<Dashboard />} />
@@ -76,11 +86,17 @@ function App() {
             path="report" 
             element={<AttendanceReport />} 
           />
-          <Route
-            path="chat"
-            element={userRole === 'leader' ? <AIChat /> : <Navigate to="/" replace />}
-          />
         </Route>
+
+        <Route
+          path="/chat"
+          element={(() => {
+            if (!isAuthenticated) {
+              return <Navigate to="/login" replace />;
+            }
+            return userRole === 'leader' ? <AIChat /> : <Navigate to="/" replace />;
+          })()}
+        />
       </Routes>
     </Router>
   );

@@ -6,22 +6,17 @@
 // ============================================================
 
 // ── React hook
-import { useState, useEffect, useRef, memo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
 // ── Icons
 import { BotMessageSquare, X, Send, User, Sparkles, RotateCcw, Maximize2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import BubbleMessage from './BubbleMessage';
+import MarkdownRenderer from './MarkdownRenderer';
 
 const THREAD_ID_STORAGE_KEY = 'smartchurch_ai_thread_id';
-
-const INITIAL_MESSAGES = [
-  {
-    sender: 'ai',
-    text: 'Shalom! Saya AI Assistant SmartChurch. Ada insight kehadiran atau tren jemaat yang ingin Anda ketahui hari ini?',
-  },
-];
 
 const readThreadIdFromSession = () => {
   if (typeof window === 'undefined') return null;
@@ -96,7 +91,7 @@ export default function AIAssistantWidget({ accent = defaultAccent }) {
   const [threadId, setThreadId] = useState(() => readThreadIdFromSession());
 
   // ── Messages are fetched from backend when a thread_id exists
-  const [messages, setMessages] = useState(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState([]);
   const hasLoadedHistoryRef = useRef(false);
   
 
@@ -113,7 +108,7 @@ export default function AIAssistantWidget({ accent = defaultAccent }) {
 
     if (!threadId) {
       sessionStorage.removeItem(THREAD_ID_STORAGE_KEY);
-      setMessages(INITIAL_MESSAGES);
+      setMessages([]);
       hasLoadedHistoryRef.current = false;
       return;
     }
@@ -154,8 +149,7 @@ export default function AIAssistantWidget({ accent = defaultAccent }) {
   const streamAIResponse = async (message, onChunk, onMeta, onDone) => {
     const URL =
       'http://localhost:8000/api/chat/' +
-      (threadId ? threadId + '/' : '') +
-      '?stream=1';
+      (threadId ? threadId + '/' : '');
 
     let parsedLength = 0;
     let buffer = '';
@@ -185,7 +179,7 @@ export default function AIAssistantWidget({ accent = defaultAccent }) {
 
   const handleRestart = () => {
     setThreadId(null);
-    setMessages(INITIAL_MESSAGES);
+    setMessages([]);
     setInput('');
     setIsTyping(false);
   };
@@ -321,6 +315,14 @@ export default function AIAssistantWidget({ accent = defaultAccent }) {
 
             {/* ── Message list ── */}
             <div className="flex flex-col flex-1 gap-3 bg-slate-50 px-4 py-4 overflow-x-hidden overflow-y-auto">
+              <BubbleMessage
+                  avatar={<BotMessageSquare size={11} />}
+                  content={<MarkdownRenderer>Shalom! Saya AI Assistant SmartChurch. Ada insight kehadiran atau tren jemaat yang ingin Anda ketahui hari ini?</MarkdownRenderer>}
+                  alignment='left'
+                  avatarClass= {`bg-linear-to-br ${accent.gradient} text-white`}
+                  bubbleClass='rounded-tl-sm border border-slate-100 bg-white text-slate-700 shadow-sm'
+                />
+
               {messages.map((msg, i) => {
                 if (msg.text === '') return null;
                 return <BubbleMessage
@@ -404,124 +406,91 @@ export default function AIAssistantWidget({ accent = defaultAccent }) {
   );
 }
 
-const BubbleMessage = ({ avatar, content, alignment, avatarClass, bubbleClass }) => (
-  <div
-    className={`flex max-w-[88%] min-w-0 gap-2.5 ${
-      alignment === "right" ? "self-end flex-row-reverse" : "self-start"
-    }`}
-  >
-    <div
-      className={`mt-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs ${avatarClass}`}
-    >
-      {avatar}
-    </div>
+// const BubbleMessage = ({ avatar, content, alignment, avatarClass, bubbleClass }) => (
+//   <div
+//     className={`flex max-w-[88%] min-w-0 gap-2.5 ${
+//       alignment === "right" ? "self-end flex-row-reverse" : "self-start"
+//     }`}
+//   >
+//     <div
+//       className={`mt-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs ${avatarClass}`}
+//     >
+//       {avatar}
+//     </div>
 
-    {/* Message bubble */}
-    <div
-      className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed min-w-0 max-w-full ${bubbleClass}`}
-    >
-      {content}
-    </div>
-  </div>
-);
+//     {/* Message bubble */}
+//     <div
+//       className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed min-w-0 max-w-full ${bubbleClass}`}
+//     >
+//       {content}
+//     </div>
+//   </div>
+// );
 
-const MarkdownImage = ({ src, alt }) => {
-  const [isOverlayOpen, setIsOverlayOpen] = useState(false);
+// const MarkdownImage = ({ src, alt }) => {
+//   const [isOverlayOpen, setIsOverlayOpen] = useState(false);
 
-  useEffect(() => {
-    if (!isOverlayOpen) return;
+//   useEffect(() => {
+//     if (!isOverlayOpen) return;
 
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setIsOverlayOpen(false);
-      }
-    };
+//     const onKeyDown = (event) => {
+//       if (event.key === 'Escape') {
+//         setIsOverlayOpen(false);
+//       }
+//     };
 
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isOverlayOpen]);
+//     document.addEventListener('keydown', onKeyDown);
+//     return () => document.removeEventListener('keydown', onKeyDown);
+//   }, [isOverlayOpen]);
 
-  if (!src) return null;
+//   if (!src) return null;
 
-  return (
-    <>
-      <div className="group inline-block relative my-2 max-w-full">
-        <img
-          src={src}
-          alt={alt || 'Image'}
-          loading="lazy"
-          className="border border-slate-200 rounded-xl max-w-full max-h-72 object-contain"
-        />
+//   return (
+//     <>
+//       <div className="group inline-block relative my-2 max-w-full">
+//         <img
+//           src={src}
+//           alt={alt || 'Image'}
+//           loading="lazy"
+//           className="border border-slate-200 rounded-xl max-w-full max-h-72 object-contain"
+//         />
 
-        <button
-          type="button"
-          onClick={() => setIsOverlayOpen(true)}
-          aria-label="Perbesar gambar"
-          title="Perbesar gambar"
-          className="right-2 bottom-2 absolute flex items-center gap-1 bg-slate-900/85 hover:bg-slate-900 px-2.5 py-1.5 rounded-lg text-white text-xs transition-all"
-        >
-          <Maximize2 size={14} />
-          Zoom
-        </button>
-      </div>
+//         <button
+//           type="button"
+//           onClick={() => setIsOverlayOpen(true)}
+//           aria-label="Perbesar gambar"
+//           title="Perbesar gambar"
+//           className="right-2 bottom-2 absolute flex items-center gap-1 bg-slate-900/85 hover:bg-slate-900 px-2.5 py-1.5 rounded-lg text-white text-xs transition-all"
+//         >
+//           <Maximize2 size={14} />
+//           Zoom
+//         </button>
+//       </div>
 
-      {isOverlayOpen && (
-        <div
-          className="z-120 fixed inset-0 flex justify-center items-center bg-slate-950/80 p-4"
-          onClick={() => setIsOverlayOpen(false)}
-        >
-          <button
-            type="button"
-            onClick={() => setIsOverlayOpen(false)}
-            aria-label="Tutup gambar"
-            title="Tutup"
-            className="top-4 right-4 absolute flex items-center gap-1 bg-white/95 hover:bg-white px-3 py-2 rounded-lg text-slate-700 text-sm"
-          >
-            <X size={16} />
-            Tutup
-          </button>
+//       {isOverlayOpen && (
+//         <div
+//           className="z-120 fixed inset-0 flex justify-center items-center bg-slate-950/80 p-4"
+//           onClick={() => setIsOverlayOpen(false)}
+//         >
+//           <button
+//             type="button"
+//             onClick={() => setIsOverlayOpen(false)}
+//             aria-label="Tutup gambar"
+//             title="Tutup"
+//             className="top-4 right-4 absolute flex items-center gap-1 bg-white/95 hover:bg-white px-3 py-2 rounded-lg text-slate-700 text-sm"
+//           >
+//             <X size={16} />
+//             Tutup
+//           </button>
 
-          <img
-            src={src}
-            alt={alt || 'Preview gambar'}
-            className="border border-white/20 rounded-xl max-w-[92vw] max-h-[92vh] object-contain"
-            onClick={event => event.stopPropagation()}
-          />
-        </div>
-      )}
-    </>
-  );
-};
-
-const MarkdownRenderer = memo(({ children, ...markdownProps }) => (
-  <ReactMarkdown
-    {...markdownProps}
-    className="max-w-full prose lg:prose-xl"
-    remarkPlugins={[remarkGfm]}
-    components={{
-      table: ({ children: tableChildren, ...tableProps }) => (
-        <div className="max-w-full overflow-x-auto">
-          <table
-            {...tableProps}
-            className="border border-slate-200 w-full border-collapse"
-          >
-            {tableChildren}
-          </table>
-        </div>
-      ),
-      th: ({ children: thChildren, ...thProps }) => (
-        <th {...thProps} className="px-3 py-2 border border-slate-200 text-left">
-          {thChildren}
-        </th>
-      ),
-      td: ({ children: tdChildren, ...tdProps }) => (
-        <td {...tdProps} className="px-3 py-2 border border-slate-200">
-          {tdChildren}
-        </td>
-      ),
-      img: ({ src, alt }) => <MarkdownImage src={src} alt={alt} />,
-    }}
-  >
-    {children}
-  </ReactMarkdown>
-), (prevProps, nextProps) => prevProps.children === nextProps.children);
+//           <img
+//             src={src}
+//             alt={alt || 'Preview gambar'}
+//             className="border border-white/20 rounded-xl max-w-[92vw] max-h-[92vh] object-contain"
+//             onClick={event => event.stopPropagation()}
+//           />
+//         </div>
+//       )}
+//     </>
+//   );
+// };

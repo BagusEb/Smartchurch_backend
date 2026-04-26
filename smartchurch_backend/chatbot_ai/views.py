@@ -2,6 +2,8 @@ import uuid
 import json
 import os
 from urllib.parse import quote_plus
+from typing import Annotated, Literal
+from typing_extensions import TypedDict
 
 from django.conf import settings
 from django.http import StreamingHttpResponse
@@ -10,12 +12,21 @@ from rest_framework.decorators import api_view, renderer_classes
 from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 from cachetools import TTLCache
-from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+    BaseMessage,
+    AIMessageChunk,
+)
 from langchain_core.tools import tool
 from langchain_community.chat_message_histories import SQLChatMessageHistory
 from langchain_openrouter import ChatOpenRouter
 from sqlalchemy import create_engine, text
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.types import Command
 
 
 # ---------------------------------------------------------------------------
@@ -25,9 +36,10 @@ from sqlalchemy import create_engine, text
 CHAT_CACHE_TTL_SECONDS = 3600
 MAX_TOOL_CALL_ROUNDS = 5
 MAX_TOOL_ROWS = 100
+
 TOOL_MESSAGES = {
-    "ask_database": "Mengambil data dari database...",
-    "create_visualization": "Membuat plot yang diminta...",
+    "query_postgres": "Mengambil data dari database...",
+    "generate_seaborn_plot": "Membuat plot yang diminta...",
 }
 
 
@@ -81,14 +93,14 @@ def _is_read_only_query(query: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Tool definition
+# Low-level tools
 # ---------------------------------------------------------------------------
 
 
 @tool("query_postgres")
 def query_postgres(query: str) -> str:
     """Run a read-only PostgreSQL query and return rows as JSON.
-        Here is the schema:
+    Here is the schema:
     {
       "tables": {
         "tm_member": {
@@ -180,66 +192,6 @@ def query_postgres(query: str) -> str:
         return f"Database query failed: {exc}"
 
 
-# ---------------------------------------------------------------------------
-# Three-Agent Setup: Chat, Query, and Visualization
-# ---------------------------------------------------------------------------
-
-# 1. The Query Agent (Agent 2)
-QUERY_SYSTEM_PROMPT = (
-    "Anda adalah ahli database untuk sistem manajemen gereja. "
-    "Anda memiliki akses ke tool query_postgres. Terjemahkan pertanyaan pengguna menjadi "
-    "query PostgreSQL SELECT yang read-only, jalankan query tersebut, lalu kembalikan ringkasan hasil yang singkat. "
-    "Jangan pernah mencoba INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CREATE, GRANT, atau REVOKE."
-)
-
-query_llm = ChatOpenRouter(
-    model="openrouter/auto",
-    temperature=0.0,
-    plugins=[{"id": "auto-router", "allowed_models": ["openai/*"]}],
-).bind_tools([query_postgres])
-# query_llm = ChatOpenRouter(
-#     model="openrouter/free",
-#     temperature=0.0,
-# ).bind_tools([query_postgres])
-
-
-@tool("ask_database")
-def ask_database(question: str) -> str:
-    """Ajukan pertanyaan tentang database gereja. Gunakan tool ini saat membutuhkan data."""
-    messages = [
-        SystemMessage(content=QUERY_SYSTEM_PROMPT),
-        HumanMessage(content=question),
-    ]
-    for _ in range(MAX_TOOL_CALL_ROUNDS):
-        response = query_llm.invoke(messages)
-        messages.append(response)
-        tool_calls = getattr(response, "tool_calls", [])
-
-        if not tool_calls:
-            return str(response.content)
-
-        for tc in tool_calls:
-            tool_name = tc.get("name")
-            tool_args = tc.get("args", {})
-            call_id = tc.get("id")
-
-            try:
-                if tool_name == "query_postgres":
-                    output = query_postgres.invoke(tool_args)
-                else:
-                    output = f"Error: Unknown tool '{tool_name}'"
-            except Exception as e:
-                output = f"Error executing tool: {str(e)}"
-
-            messages.append(ToolMessage(content=str(output), tool_call_id=call_id))
-
-    final_response = query_llm.invoke(messages)
-    return str(final_response.content)
-
-
-# 2. The Visualization Agent (Agent 3)
-
-
 @tool("generate_seaborn_plot")
 def generate_seaborn_plot(
     data_json: str, chart_type: str, x_col: str, y_col: str, title: str
@@ -252,15 +204,12 @@ def generate_seaborn_plot(
     - y_col: Nama kolom untuk sumbu y.
     - title: Judul plot.
     """
-    import os
-    import uuid
     import pandas as pd
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import seaborn as sns
-    from django.conf import settings
 
     media_root = getattr(
         settings, "MEDIA_ROOT", os.path.join(settings.BASE_DIR, "media")
@@ -284,7 +233,6 @@ def generate_seaborn_plot(
         elif chart_type == "scatter":
             sns.scatterplot(data=df, x=x_col, y=y_col)
         elif chart_type == "pie":
-            # For pie charts, x_col acts as labels and y_col acts as the values
             plt.pie(df[y_col], labels=df[x_col], autopct="%1.1f%%")
         else:
             plt.close("all")
@@ -298,19 +246,39 @@ def generate_seaborn_plot(
         plt.savefig(save_path)
         plt.close("all")
 
-        # Build media URL
         media_url = getattr(settings, "MEDIA_URL", "/media/")
         server_path = os.getenv("SERVER_PATH", "http://localhost:8000")
-
         full_image_url = (
             f"{server_path.rstrip('/')}{media_url.rstrip('/')}/ai_plots/{filename}"
         )
-
         return f"Plot successfully saved at URL: {full_image_url}"
     except Exception as e:
         plt.close("all")
         return f"Plot generation failed: {str(e)}"
 
+
+# ---------------------------------------------------------------------------
+# LangGraph State
+# ---------------------------------------------------------------------------
+
+
+class GraphState(TypedDict):
+    messages: Annotated[list[BaseMessage], add_messages]
+    # The user's original question, passed cleanly to sub-agents without
+    # fishing through message history for a ToolMessage.
+    task: str
+
+
+# ---------------------------------------------------------------------------
+# LLM instances
+# ---------------------------------------------------------------------------
+
+QUERY_SYSTEM_PROMPT = (
+    "Anda adalah ahli database untuk sistem manajemen gereja. "
+    "Anda memiliki akses ke tool query_postgres. Terjemahkan pertanyaan pengguna menjadi "
+    "query PostgreSQL SELECT yang read-only, jalankan query tersebut, lalu kembalikan ringkasan hasil yang singkat. "
+    "Jangan pernah mencoba INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CREATE, GRANT, atau REVOKE."
+)
 
 VISUALIZATION_SYSTEM_PROMPT = (
     "Anda adalah ahli visualisasi data untuk sistem manajemen gereja. "
@@ -321,67 +289,221 @@ VISUALIZATION_SYSTEM_PROMPT = (
     "Kembalikan ringkasan singkat dan URL gambar final kepada pengguna."
 )
 
+# The supervisor no longer needs tool definitions — routing is done in Python,
+# not by the LLM emitting tool calls. The LLM just decides which agent to use
+# by responding with a simple JSON intent, keeping the message history clean.
+SUPERVISOR_SYSTEM_PROMPT = (
+    "Anda adalah supervisor untuk sistem manajemen gereja. "
+    "Tentukan agen mana yang paling tepat untuk menangani permintaan pengguna:\n"
+    "  • 'query_agent'    — untuk pertanyaan berbasis data/teks tentang database\n"
+    "  • 'viz_agent'      — untuk membuat chart atau grafik\n"
+    "  • 'general_agent'  — untuk percakapan santai, sapaan, atau jika tidak butuh data\n\n"
+    "Balas HANYA dengan JSON berikut dan tidak ada yang lain:\n"
+    '{"agent": "query_agent"} atau {"agent": "viz_agent"} atau {"agent": "general_agent"}\n\n'
+    "Jangan tambahkan teks lain, penjelasan, atau markdown. Hanya JSON."
+)
+
+GENERAL_SYSTEM_PROMPT = (
+    "Anda adalah AI Assistant yang ramah untuk sistem manajemen gereja. "
+    "Jawab sapaan atau pertanyaan umum dengan sopan dan singkat. "
+    "Bantu arahkan mereka jika mereka ingin bertanya tentang kehadiran, data jemaat, atau laporan."
+)
+
+general_llm = ChatOpenRouter(
+    model="openrouter/auto",
+    temperature=0.0,
+    streaming=True,
+    plugins=[{"id": "auto-router", "allowed_models": ["openai/*"]}],
+)
+
+query_llm = ChatOpenRouter(
+    model="openrouter/auto",
+    temperature=0.0,
+    streaming=True,
+    plugins=[{"id": "auto-router", "allowed_models": ["openai/*"]}],
+).bind_tools([query_postgres])
+
 visualization_llm = ChatOpenRouter(
     model="openrouter/auto",
     temperature=0.0,
+    streaming=True,
     plugins=[{"id": "auto-router", "allowed_models": ["openai/*"]}],
 ).bind_tools([query_postgres, generate_seaborn_plot])
 
-
-@tool("create_visualization")
-def create_visualization(request: str) -> str:
-    """Buat chart/grafik. Gunakan ini saat pengguna meminta visualisasi."""
-    messages = [
-        SystemMessage(content=VISUALIZATION_SYSTEM_PROMPT),
-        HumanMessage(content=request),
-    ]
-    for _ in range(MAX_TOOL_CALL_ROUNDS):
-        response = visualization_llm.invoke(messages)
-        messages.append(response)
-        tool_calls = getattr(response, "tool_calls", [])
-
-        if not tool_calls:
-            return str(response.content)
-
-        for tc in tool_calls:
-            tool_name = tc.get("name")
-            tool_args = tc.get("args", {})
-            call_id = tc.get("id")
-
-            try:
-                if tool_name == "query_postgres":
-                    output = query_postgres.invoke(tool_args)
-                elif tool_name == "generate_seaborn_plot":
-                    output = generate_seaborn_plot.invoke(tool_args)
-                else:
-                    output = f"Error: Unknown tool '{tool_name}'"
-            except Exception as e:
-                output = f"Error executing tool: {str(e)}"
-
-            messages.append(ToolMessage(content=str(output), tool_call_id=call_id))
-
-    final_response = visualization_llm.invoke(messages)
-    return str(final_response.content)
-
-
-# 3. The Chat Agent (Agent 1)
-SYSTEM_PROMPT = (
-    "Anda adalah asisten yang membantu untuk sistem manajemen gereja. "
-    "Anda memiliki akses ke tool ask_database (untuk pertanyaan data berbasis teks) dan tool create_visualization (untuk membuat chart/grafik). "
-    "Tunggu respons dari tool tersebut, lalu gabungkan hasilnya dan jawab pengguna secara alami. Sertakan URL gambar dalam format markdown jika pengguna meminta plot."
+# Supervisor only classifies intent — no tools needed.
+supervisor_llm = ChatOpenRouter(
+    model="openrouter/auto",
+    temperature=0.0,
+    plugins=[{"id": "auto-router", "allowed_models": ["openai/*"]}],
 )
 
-# agent = ChatOpenRouter(
-#     model="openrouter/auto",
-#     temperature=0.7,
-#     streaming=True,
-# ).bind_tools([ask_database])
-agent = ChatOpenRouter(
-    model="openrouter/auto",
-    temperature=0.7,
-    streaming=True,
-    plugins=[{"id": "auto-router", "allowed_models": ["openai/*"]}],
-).bind_tools([ask_database, create_visualization])
+# ---------------------------------------------------------------------------
+# Graph node helpers
+# ---------------------------------------------------------------------------
+
+TOOL_REGISTRY = {
+    "query_postgres": query_postgres,
+    "generate_seaborn_plot": generate_seaborn_plot,
+}
+
+
+def _execute_tool_calls(tool_calls: list[dict]) -> list[ToolMessage]:
+    """Execute a list of tool call dicts and return ToolMessages."""
+    results: list[ToolMessage] = []
+    for tc in tool_calls:
+        fn = TOOL_REGISTRY.get(tc["name"])
+        if fn is None:
+            content = f"Error: Unknown tool '{tc['name']}'"
+        else:
+            try:
+                content = fn.invoke(tc["args"])
+            except Exception as exc:
+                content = f"Error executing tool: {exc}"
+        results.append(ToolMessage(content=str(content), tool_call_id=tc["id"]))
+    return results
+
+
+def _run_react_loop(
+    llm,
+    system_prompt: str,
+    task: str,
+    config: dict = None,
+) -> str:
+    """
+    Generic ReAct loop: call the LLM, execute any tool calls it emits,
+    feed results back, repeat until the LLM stops calling tools.
+    Returns the final text content.
+    """
+    working: list[BaseMessage] = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=task),
+    ]
+    for _ in range(MAX_TOOL_CALL_ROUNDS):
+        response = llm.invoke(working, config=config)
+        working.append(response)
+        tool_calls = getattr(response, "tool_calls", [])
+        if not tool_calls:
+            break
+        working.extend(_execute_tool_calls(tool_calls))
+
+    return str(working[-1].content) if working else "Tidak ada hasil."
+
+
+# ---------------------------------------------------------------------------
+# Graph nodes
+# ---------------------------------------------------------------------------
+
+
+def supervisor_node(
+    state: GraphState,
+) -> Command[Literal["query_agent", "viz_agent", "general_agent"]]:
+    """
+    Classifies the user's intent and routes to the appropriate sub-agent
+    using a LangGraph Command.
+
+    Key improvements over the original:
+    - No fake routing tools — the LLM just returns JSON, keeping the message
+      history free of spurious ToolMessages.
+    - The routing decision is made in Python, not inferred from tool call names.
+    - `task` is set here once and passed cleanly to sub-agents via state,
+      so they don't need to fish for it in the message history.
+    """
+    # The task is always the most recent human message.
+    task = next(
+        (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
+        "Tolong bantu saya.",
+    )
+
+    classification_response = supervisor_llm.invoke(
+        [
+            SystemMessage(content=SUPERVISOR_SYSTEM_PROMPT),
+            HumanMessage(content=task),
+        ]
+    )
+
+    try:
+        raw = str(classification_response.content).strip()
+        intent = json.loads(raw).get("agent", "general_agent")
+    except (json.JSONDecodeError, AttributeError):
+        # Default to general agent if classification fails.
+        intent = "general_agent"
+
+    if intent == "viz_agent":
+        next_node: Literal["query_agent", "viz_agent", "general_agent"] = "viz_agent"
+    elif intent == "query_agent":
+        next_node = "query_agent"
+    else:
+        next_node = "general_agent"
+
+    # Pass the task forward in state; no message is added to history here.
+    return Command(goto=next_node, update={"task": task})
+
+
+from langchain_core.runnables import RunnableConfig
+
+
+def query_agent_node(
+    state: GraphState, config: RunnableConfig
+) -> Command[Literal[END]]:
+    """
+    Runs a ReAct loop with query_postgres and returns its answer directly
+    as the final AIMessage — no synthesizer needed since the agent already
+    produces clean prose.
+    """
+    result = _run_react_loop(query_llm, QUERY_SYSTEM_PROMPT, state["task"], config)
+    return Command(goto=END, update={"messages": [AIMessage(content=result)]})
+
+
+def viz_agent_node(state: GraphState, config: RunnableConfig) -> Command[Literal[END]]:
+    """
+    Runs a ReAct loop with query_postgres + generate_seaborn_plot and returns
+    its answer directly as the final AIMessage.
+    """
+    result = _run_react_loop(
+        visualization_llm, VISUALIZATION_SYSTEM_PROMPT, state["task"], config
+    )
+    return Command(goto=END, update={"messages": [AIMessage(content=result)]})
+
+
+def general_agent_node(
+    state: GraphState, config: RunnableConfig
+) -> Command[Literal[END]]:
+    """
+    A simple node for chitchat without tools.
+    """
+    response = general_llm.invoke(
+        [
+            SystemMessage(content=GENERAL_SYSTEM_PROMPT),
+            HumanMessage(content=state["task"]),
+        ],
+        config=config,
+    )
+    return Command(
+        goto=END, update={"messages": [AIMessage(content=str(response.content))]}
+    )
+
+
+# ---------------------------------------------------------------------------
+# Build the graph
+# ---------------------------------------------------------------------------
+
+
+def build_graph() -> StateGraph:
+    builder = StateGraph(GraphState)
+
+    builder.add_node("supervisor", supervisor_node)
+    builder.add_node("query_agent", query_agent_node)
+    builder.add_node("viz_agent", viz_agent_node)
+    builder.add_node("general_agent", general_agent_node)
+
+    # Entry → supervisor classifies and routes via Command.
+    # Sub-agents route directly to END via Command — no extra edges needed.
+    builder.add_edge(START, "supervisor")
+
+    return builder.compile()
+
+
+graph = build_graph()
 
 
 # ---------------------------------------------------------------------------
@@ -414,8 +536,8 @@ def get_cached_messages(session_id: str) -> list[BaseMessage]:
     return cached
 
 
-def get_chat_history(session_id: str) -> list[dict[str, str]]:
-    return [serialize_message(m) for m in get_cached_messages(session_id)]
+def get_chat_history(session_id: str) -> list[dict]:
+    return [_serialize_message(m) for m in get_cached_messages(session_id)]
 
 
 def add_chat_turn(session_id: str, message: str, response: str) -> None:
@@ -431,7 +553,7 @@ def create_thread_id() -> str:
     return str(uuid.uuid4())
 
 
-def serialize_message(message: BaseMessage) -> dict[str, str]:
+def _serialize_message(message: BaseMessage) -> dict:
     if isinstance(message, HumanMessage):
         role = "user"
     elif isinstance(message, AIMessage):
@@ -446,65 +568,19 @@ def serialize_message(message: BaseMessage) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Core agent runner (non-streaming, handles tool loops)
+# Runner helpers
 # ---------------------------------------------------------------------------
 
 
-def _build_messages(
-    prev_messages: list[BaseMessage], user_message: str
-) -> list[BaseMessage]:
-    return [
-        SystemMessage(content=SYSTEM_PROMPT),
-        *prev_messages,
-        HumanMessage(content=user_message),
-    ]
-
-
-def run_agent(prev_messages: list[BaseMessage], user_message: str) -> str:
-    """Non-streaming: invoke agent and resolve all tool calls, return final text."""
-    working_messages = _build_messages(prev_messages, user_message)
-
-    for _ in range(MAX_TOOL_CALL_ROUNDS):
-        response = agent.invoke(working_messages)
-
-        # Add the AI message to history so it knows it made the call
-        working_messages.append(response)
-
-        tool_calls = getattr(response, "tool_calls", [])
-
-        # If the LLM didn't call a tool, we're done
-        if not tool_calls:
-            return str(response.content)
-
-        # Resolve each tool call
-        for tc in tool_calls:
-            tool_name = tc.get("name")
-            tool_args = tc.get("args", {})
-            call_id = tc.get("id")
-
-            try:
-                if tool_name == "ask_database":
-                    output = ask_database.invoke(tool_args)
-                elif tool_name == "create_visualization":
-                    output = create_visualization.invoke(tool_args)
-                else:
-                    output = f"Error: Unknown tool '{tool_name}'"
-            except Exception as e:
-                output = f"Error executing tool: {str(e)}"
-
-            # Append the ToolMessage result
-            working_messages.append(
-                ToolMessage(content=str(output), tool_call_id=call_id)
-            )
-
-    # Final pass: If we exited the loop via MAX_TOOL_CALL_ROUNDS,
-    # give the model one last chance to provide a summary.
-    final_response = agent.invoke(working_messages)
-    return str(final_response.content)
+def _initial_state(prev_messages: list[BaseMessage], user_message: str) -> GraphState:
+    return {
+        "messages": [*prev_messages, HumanMessage(content=user_message)],
+        "task": user_message,
+    }
 
 
 # ---------------------------------------------------------------------------
-# Streaming agent runner
+# SSE helpers
 # ---------------------------------------------------------------------------
 
 
@@ -513,66 +589,43 @@ def _sse_event(payload: dict) -> str:
 
 
 def stream_agent(prev_messages: list[BaseMessage], user_message: str, thread_id: str):
-    working_messages = _build_messages(prev_messages, user_message)
-    final_text_parts: list[str] = []
+    """
+    Streaming generator using graph.stream() with stream_mode="messages"
+    to capture both tool calls and text generation chunks.
+    """
+    initial_state = _initial_state(prev_messages, user_message)
 
     yield _sse_event({"type": "meta", "thread_id": thread_id})
+    final_text_parts: list[str] = []
 
-    for round_num in range(MAX_TOOL_CALL_ROUNDS + 1):
-        # 1. Use an aggregator to merge chunks
-        full_response_message = None
+    try:
+        from langchain_core.messages import AIMessageChunk
 
-        for chunk in agent.stream(working_messages):
-            # The '+' operator on LangChain messages merges chunks correctly
-            full_response_message = (
-                chunk
-                if full_response_message is None
-                else full_response_message + chunk
-            )
+        for chunk, metadata in graph.stream(initial_state, stream_mode="messages"):
+            if metadata.get("langgraph_node") == "supervisor":
+                continue
 
-            if chunk.content:
+            # The chunk is a message object. If it has tool call chunks with names, it's starting a tool call.
+            tool_call_chunks = getattr(chunk, "tool_call_chunks", [])
+            for tc_chunk in tool_call_chunks:
+                name = tc_chunk.get("name")
+                if name:
+                    status_label = TOOL_MESSAGES.get(name, f"Memanggil {name}...")
+                    yield _sse_event({"type": "status", "text": status_label})
+
+            if isinstance(chunk, AIMessageChunk) and chunk.content:
                 text = str(chunk.content)
+                final_text_parts.append(text)
                 yield _sse_event({"type": "chunk", "text": text})
 
-        # 2. Extract tool calls from the FULLY aggregated message
-        tool_calls = getattr(full_response_message, "tool_calls", [])
+        full_text = "".join(final_text_parts)
+        add_chat_turn(thread_id, user_message, full_text)
+        yield _sse_event({"type": "done"})
 
-        if not tool_calls:
-            # Only add to final text if it was a text response, not a tool call
-            if full_response_message.content:
-                final_text_parts.append(full_response_message.content)
-            break
-
-        # 3. Add the complete AI message (containing the IDs) to history
-        working_messages.append(full_response_message)
-
-        for tc in tool_calls:
-            tool_name = tc.get("name")
-            yield _sse_event(
-                {
-                    "type": "status",
-                    "text": TOOL_MESSAGES.get(
-                        tool_name, "Memproses pemanggilan tool..."
-                    ),
-                }
-            )
-            tool_args = tc.get("args", {})
-            call_id = tc.get("id")  # This will now be populated
-
-            if tool_name == "ask_database":
-                output = ask_database.invoke(tool_args)
-            elif tool_name == "create_visualization":
-                output = create_visualization.invoke(tool_args)
-            else:
-                output = f"Unknown tool: {tool_name}"
-
-            working_messages.append(
-                ToolMessage(content=str(output), tool_call_id=call_id)
-            )
-
-    response_text = "".join(final_text_parts)
-    yield _sse_event({"type": "done"})
-    add_chat_turn(thread_id, user_message, response_text)
+    except Exception as e:
+        print(f"Streaming error: {e}")
+        yield _sse_event({"type": "chunk", "text": "Maaf, terjadi kesalahan internal."})
+        yield _sse_event({"type": "done"})
 
 
 # ---------------------------------------------------------------------------
@@ -627,26 +680,10 @@ def chat(request, thread_id=None):
         )
 
     prev_messages = get_cached_messages(tid)
-
-    wants_stream = (
-        request.query_params.get("stream") == "1"
-        or "text/event-stream" in request.headers.get("accept", "").lower()
+    response = StreamingHttpResponse(
+        stream_agent(prev_messages, message, tid),
+        content_type="text/event-stream",
     )
-
-    if wants_stream:
-        response = StreamingHttpResponse(
-            stream_agent(prev_messages, message, tid),
-            content_type="text/event-stream",
-        )
-        response["Cache-Control"] = "no-cache"
-        response["X-Accel-Buffering"] = "no"
-
-        return response
-
-    # Non-streaming path
-    response_text = run_agent(prev_messages, message)
-    add_chat_turn(tid, message, response_text)
-    return Response(
-        {"thread_id": tid, "message": response_text},
-        status=status.HTTP_200_OK,
-    )
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
